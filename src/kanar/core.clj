@@ -22,12 +22,6 @@
 ;Returns:
 ;principal object if authentication succeeds
 
-;Throws:
-;{:type :login-failed, :error error-message}      - display error message;
-;{:type :login-finished :msg message-text}        - display standard message
-;{:type :login-cont, :resp http-response-object} - return HTTP response;
-
-
 ; -------------------------------------------------------------------------------------------------------
 
 
@@ -37,8 +31,8 @@
     (if (and username password)
       (try+
         (auth-fn nil req)
-        (catch [:type :login-failed] {error :error}
-          (ku/login-cont (render-login-fn :username username :error-msg error :service service))))
+        (catch [:type :login-failed] {msg :msg}
+          (ku/login-cont (render-login-fn :username username :error-msg msg :service service))))
       (ku/login-cont (render-login-fn :service service)))))
 
 
@@ -50,8 +44,8 @@
       (try+
         (let [su-princ (su-auth-fn (auth-fn nil req) req)]
           (auth-fn {:id runas :attributes {:impersonificated true, :su-admin username}} req))
-        (catch [:type :login-failed] {error :error}
-          (ku/login-cont (render-su-login-fn :username username :runas runas :error-msg error :service service))))
+        (catch [:type :login-failed] {msg :msg}
+          (ku/login-cont (render-su-login-fn :username username :runas runas :error-msg msg :service service))))
       (ku/login-cont (render-su-login-fn :service service)))))
 
 
@@ -120,7 +114,7 @@
           (let [princ (auth-flow-fn app-state req)
                 ticket (kt/grant-tgt-ticket ticket-registry princ)]
             (kanar-service-redirect app-state req ticket))
-          (catch [:type :login-cont] {resp :resp} resp)))
+          (catch [:type :login-cont] {resp :resp} resp)))      ; TODO automated msg <-> resp switching
       (kanar-service-redirect app-state req tgc))))
 
 
@@ -138,7 +132,6 @@
        :body    "Redirecting ..."
        :headers {"Location" (:service params)}}
       resp)))
-
 
 
 (defn service-logout [url svt]

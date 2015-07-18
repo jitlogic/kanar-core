@@ -22,10 +22,10 @@
   {:value val, :http-only true, :secure true})
 
 (defn login-failed [msg]
-  (throw+ {:type :login-failed :error msg}))
+  (throw+ {:type :login-failed :msg msg}))
 
-(defn login-cont [msg]
-  (throw+ {:type :login-cont :resp msg}))
+(defn login-cont [resp]
+  (throw+ {:type :login-cont :resp resp}))
 
 (def DEFAULT-CONFIG
   {
@@ -36,6 +36,8 @@
    :http-port 8080                                          ; HTTP port
    :https-enabled true                                      ; enable HTTPS
    :https-port 8443                                         ; HTTPS port
+   :https-keystore "kanar.jks"                              ; SSL key store
+   :https-keyalias "kanar"                                  ; SSL key alias
    })
 
 
