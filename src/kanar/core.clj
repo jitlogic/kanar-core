@@ -27,26 +27,26 @@
 
 (defn form-login-flow [auth-fn render-login-fn]
   ""
-  (fn [app-state {{:keys [username password service]} :params :as req}]
+  (fn [app-state {{:keys [dom username password service]} :params :as req}]
     (if (and username password)
       (try+
         (auth-fn nil req)
         (catch [:type :login-failed] {msg :msg}
-          (ku/login-cont (render-login-fn :username username :error-msg msg :service service))))
-      (ku/login-cont (render-login-fn :service service)))))
+          (ku/login-cont (render-login-fn :dom dom :username username :error-msg msg :service service))))
+      (ku/login-cont (render-login-fn :dom dom :service service)))))
 
 
 
 (defn form-sulogin-flow [auth-fn su-auth-fn render-su-login-fn]
   ""
-  (fn [app-state {{:keys [username password runas service]} :params :as req}]
+  (fn [app-state {{:keys [dom username password runas service]} :params :as req}]
     (if (and username password runas)
       (try+
         (let [su-princ (su-auth-fn (auth-fn nil req) req)]
           (auth-fn {:id runas :attributes {:impersonificated true, :su-admin username}} req))
         (catch [:type :login-failed] {msg :msg}
-          (ku/login-cont (render-su-login-fn :username username :runas runas :error-msg msg :service service))))
-      (ku/login-cont (render-su-login-fn :service service)))))
+          (ku/login-cont (render-su-login-fn :dom dom :username username :runas runas :error-msg msg :service service))))
+      (ku/login-cont (render-su-login-fn :dom dom :service service)))))
 
 
 

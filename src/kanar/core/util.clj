@@ -15,7 +15,8 @@
 (defn cur-time [] (System/currentTimeMillis))
 
 (defn xml-time [t]
-  (let [sf (SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss.SSSSZ")]
+  (let [sf (SimpleDateFormat. "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")]
+    (.setTimeZone sf (java.util.TimeZone/getTimeZone "UTC"))
     (.format sf (Date. t))))
 
 (defn secure-cookie [val]

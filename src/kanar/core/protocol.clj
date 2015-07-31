@@ -28,7 +28,7 @@
                            :IssueInstant t1
                            :MajorVersion "1" :MinorVersion "1"
                            :Recipient    (:url svt)
-                           :ResponseId   (str "_" (ku/random-string 32))}
+                           :ResponseID   (str "_" (ku/random-string 32))}
          [:saml1p:Status [:saml1p:StatusCode {:Value "saml1p:Success"}]]
          [:saml1:Assertion
           {:xmlns:saml1        "urn:oasis:names:tc:SAML:1.0:assertion"
@@ -50,7 +50,7 @@
             [:saml1:NameIdentifier (get-in svt [:tgt :princ :id])]
             [:saml1:SubjectConfirmation
              [:saml1:ConfirmationMethod "urn:oasis:names:tc:SAML:1.0:cm:artifact"]]]
-           (for [[k v] (get-in svt [:tgt :princ :attrs])]
+           (for [[k v] (get-in svt [:tgt :princ :attributes])]
              [:saml1:Attribute {:AttributeName (name k)
                           :AttributeNamespace "http://www.ja-sig.org/products/cas"}
               [:saml1:AttributeValue (str v)]])]
