@@ -31,48 +31,19 @@
    {:id :all :url #"https://.*"}])
 
 
-(defn render-login-view [& {:keys [username error-msg service TARGET]}]
-  (str "<html><head><title>Kanar</title></head><body>"
-       (if error-msg (str "<div>" error-msg "</div>") "")
-       "<form method=\"post\" action=\"login\">"
-       "<input type=\"text\" value=\"" (or username "") "\" name=\"username\"/>"
-       "<input type=\"password\" name=\"password\"/>"
-       "<input type=\"hidden\" name=\"lt\" value=\"lt\"/>"
-       (if service (str "<input name=\"service\" type=\"hidden\" value=\"" service "\"/>") "")
-       (if TARGET (str "<input name=\"TARGET\" type=\"hidden\" value=\"" TARGET "\"/>") "")
-       "<input type=\"submit\" value=\"submit\"/>"
-       "</form><body></html>"))
-
-(defn render-message-view [status msg & {:keys [url link]}]
-  "Renders message view. This function needs to be reimplemented.
-
-  Arguments:
-  status - keyword - :ok, :error
-  msg - message text
-  url, link - if present, will render link pointing to given URL
-  "
-  (str
-    "<html><head><title>Kanar</title></head><body>"
-    msg
-    (if url (str "<a href=\"" url "\">" link "</a>"))
-    "</body></html>"))
+(defn render-login-view [& {:as args}]
+  (pr-str {:view :login :args (dissoc args :app-state)}))
 
 
-(defn render-su-login-view [& {:keys [username error-msg service TARGET]}]
-  (str "<html><head><title>Kanar</title></head><body>"
-       (if error-msg (str "<div>" error-msg "</div>") "")
-       "<form method=\"post\" action=\"login\">"
-       "<input type=\"text\" value=\"" (or username "") "\" name=\"username\"/>"
-       "<input type=\"password\" name=\"password\"/>"
-       "<input type=\"text\" name=\"runas\"/>"
-       "<input type=\"hidden\" name=\"lt\" value=\"lt\"/>"
-       (if service (str "<input name=\"service\" type=\"hidden\" value=\"" service "\"/>") "")
-       (if TARGET (str "<input name=\"TARGET\" type=\"hidden\" value=\"" TARGET "\"/>") "")
-       "<input type=\"submit\" value=\"submit\"/>"
-       "</form><body></html>"))
+(defn render-message-view [status msg & {:as args}]
+  (pr-str {:view :message :status status :msg msg :args (dissoc args :app-state)}))
 
 
-(defn authenticate [princ {{username :username password :password} :params :as req}]
+(defn render-su-login-view [& {:as args}]
+  (pr-str {:view :sulogin :args (dissoc args :app-state)}))
+
+
+(defn authenticate [princ {{username :username password :password dom :dom} :params :as req}]
   "Basic authentication function.
   princ - principal data (or null if still not authenticated)
   req - HTTP request object (with form params)
@@ -80,14 +51,12 @@
   (if princ
     princ
     (if (= username password)
-      {:id username :attributes {}}
+      {:id username :attributes {} :dom dom}
       (ku/login-failed "Invalid username or password."))))
 
 
-(defn su-authenticate [{username :id :as princ} req]
-  (if (= "su" username)
-    princ
-    (ku/login-failed "This user is not authorized to perform SU.")))
+(defn select-kanar-domain [{{:keys [dom]} :params}]
+  (if (string? dom) (keyword dom) :unknown))
 
 
 
@@ -95,9 +64,9 @@
 (defn kanar-routes-new [app-state]
   (routes
     (ANY "/login" req                                       ; TODO ANY -> POST/GET
-         (kc/login-handler (kc/form-login-flow authenticate render-login-view) @app-state req))
-    (ANY "/sulogin" req                                     ; TODO ograniczyć do POST/GET
-         (kc/login-handler (kc/form-sulogin-flow authenticate su-authenticate render-su-login-view) @app-state req))
+         (kc/login-handler (:login-flow @app-state) @app-state req))
+    ;(ANY "/sulogin" req                                     ; TODO ograniczyć do POST/GET
+    ;     (kc/login-handler (kc/form-login-flow authenticate render-su-login-view) @app-state req))
     (ANY "/logout" req                                      ; TODO ograniczyć do GET
          (kc/logout-handler @app-state req))
     (ANY "/validate" req                                    ; TODO ograniczyć do POST
@@ -113,21 +82,26 @@
     (ANY "/*" []
       (redirect "login"))))
 
+(defn test-audit-fn [_ _ _ _ _])
 
 (defn basic-test-fixture [f]
   (reset! *treg-atom* {})
   (reset! *sso-logouts* [])
-  (binding [kanar (kanar-routes-new
-                    (atom
-                      {:ticket-seq      (atom 0)
-                       :conf            {:server-id "SVR1"}
-                       :services        *test-services*
-                       :ticket-registry (kt/atom-ticket-registry *treg-atom* "SVR1")
-                       :render-message-view render-message-view
-                       }))]
+  (binding [kanar (ku/wrap-set-param
+                    (kanar-routes-new
+                      (atom
+                        {:ticket-seq          (atom 0)
+                         :conf                {:server-id "SVR1"}
+                         :services            *test-services*
+                         :ticket-registry     (kt/atom-ticket-registry *treg-atom* "SVR1")
+                         :render-message-view render-message-view
+                         :audit-fn            test-audit-fn
+                         :login-flow          (kc/form-login-flow authenticate render-login-view)
+                         :svc-auth-fn (fn [_ _ svc _] (not (:verboten svc)))
+                         }))
+                    :dom select-kanar-domain)]
     (with-redefs
-      [kc/service-allowed (fn [_ _ svc] (not (:verboten svc)))
-       kc/service-logout (fn [_ _] nil)]
+      [kc/service-logout (fn [_ _] nil)]
       (f))))
 
 
@@ -172,7 +146,7 @@
 
 (deftest basic-login-logout-test
   (testing "Log in with correct password and then logout"
-    (let [r1 (kanar { :uri "/login" :params {:username "test" :password "test" :lt "true"}})]
+    (let [r1 (kanar { :uri "/login" :params {:username "test" :password "test"}})]
       (is (= 200 (:status r1)))
       (is (= 1 (count @*treg-atom*)) "Should create exactly one SSO session.")
       (is (not (empty? (get-tgc r1))) "Should return CASTGC cookie.")
@@ -183,11 +157,11 @@
           (is (= 1 (count @*treg-atom*)))) "Original CASTGC cookie should still be there.")
 
       (testing "Logout successfully with existing ticket."
-        (let [r2 (kanar {:uri "/logout" :cookies {"CASTGC" {:value (get-tgc r1)}}})]
+        (let [_ (kanar {:uri "/logout" :cookies {"CASTGC" {:value (get-tgc r1)}}})]
           (is (= 0 (count @*treg-atom*)))))))
 
   (testing "Log in with bad password."
-    (let [r1 (kanar { :uri "/login" :params {:username "test" :password "bad" :lt "true"}})]
+    (let [r1 (kanar { :uri "/login" :params {:username "test" :password "bad"}})]
       (is (= 200 (:status r1)))
       (is (= 0 (count @*treg-atom*)) "Should not create SSO session."))))
 
@@ -212,9 +186,10 @@
 
 (deftest login-with-redirection-and-warn-screen-test
   (testing "Log in with service redirection and warning screen enabled."
-    (let [r (kanar { :uri "/login" :params {:username "test" :password "test" :service "https://my-app.com" :warn nil}})]
+    (let [r (kanar { :uri "/login" :params {:username "test" :password "test" :service "https://my-app.com" :warn nil}})
+          v (read-string (:body r))]
       (is (= 200 (:status r)) "Should not make redirect.")
-      (is (re-matches #".*a href=.login.service=https://my-app.com.*", (:body r)))
+      (is  (re-matches #"login.service=https://my-app.com.*", (:url (:args v)))) ; TODO tutaj ticket nie jest podawany
       (is (= 1 (count @*treg-atom*)) "Should create only ticket granting ticket."))))
 
 
@@ -222,7 +197,7 @@
   (testing "Open login form and check if service parameter is passed properly."
     (let [r (kanar {:uri "/login" :params {:service "https://my-app.com"}})]
       (is (= 200 (:status r)) "Should return login form")
-      (is (re-matches #".*https://my-app.com.*", (:body r))))))
+      (is (re-matches #".*`https://my-app.com.*", (:body r))))))
 
 
 (deftest login-check-if-login-is-bypassed-with-gateway-parameter
@@ -261,25 +236,6 @@
       (is (= 200 (:status r)) "Should not redirect anywhere.")
       (is (re-matches #".*not allowed.*" (:body r))))))
 
-
-(deftest su-login-with-cas-redirection-test
-  (testing "Log in with correct password and CAS service redirection via SU"
-    (let [r (kanar { :uri "/sulogin" :params {:username "su" :password "su" :runas "test" :lt "true" :service "https://my-app.com"}})]
-      (is (= 302 (:status r)) "Should make redirect.")
-      (is (get-rdr r))
-      (is (re-matches #"https://my-app.com.ticket=ST-.*-SVR1", (get-rdr r)))
-      (is (= 2 (count @*treg-atom*)) "Should create SSO ticket and service ticket.")
-      (let [tid (get-tgc r)
-            tgc (get @*treg-atom* tid)]
-        (is (= (:id (:princ tgc)) "test") "Should login as user 'test'"))
-      )))
-
-(deftest su-login-without-privileves
-  (testing "Log in with correct password but without su privileges"
-    (let [r (kanar { :uri "/sulogin" :params {:username "test" :password "test" :runas "test" :lt "true" :service "https://my-app.com"}})]
-      (is (= 200 (:status r)) "Should NOT make redirect.")
-      (is (nil? (get-rdr r)))
-      (is (= 0 (count @*treg-atom*))))))
 
 ; TODO zalogować do kilku serwisów (jeden bez jawnego URL, drugi z dwoma jawnymi URL), wylogować, stwierdzić że wylogowanie przyszło;
 
@@ -386,4 +342,31 @@
 
 ; TODO proxy ticket tests
 
+(deftest test-pass-domain-args
+  (testing "Testing if domain argument is passed correctly to login view."
+    (let [r1 (kanar {:uri "/login" :params {:dom "test1"}})
+          v1 (read-string (:body r1))]
+      (is (= :test1 (:dom (:args v1))) "Domain 'test1' should appear in login view.")))
+  (testing "Test if domain argument is passed to login success view."
+    (let [r1 (kanar {:uri "/login" :params {:dom "test1" :username "test" :password "test"}})
+          v1 (read-string (:body r1))]
+      (is (= :test1 (:dom (:args v1))))))
+  (testing "Test if domain argument is passed to logout view."
+    (let [r1 (kanar {:uri "/login" :params {:dom "test1" :username "test" :password "test"}})
+          r2 (kanar {:uri "/logout" :cookies {"CASTGC" {:value (get-tgc r1)}}})
+          v2 (read-string (:body r2))]
+      (is (= :test1 (:dom (:args v2)))))))
+
+
+(deftest test-pass-req-and-tgt
+  (testing "Test if HTTP request is passed to login screen rendering fn"
+    (let [r1 (kanar {:uri "/login" :params {:dom "test1"}})
+          v1 (read-string (:body r1))]
+      (is (not-empty (:req (:args v1))) "HTTP request should be passed." )))
+  (testing "Test if HTTP request and TGT is passed to login success view."
+    (let [r1 (kanar {:uri "/login" :params {:dom "test1" :username "test" :password "test" :service "https://test1.com"}})
+          v1 (read-string (:body r1))]
+      (is (not-empty (:req (:args v1))))
+      (is (not-empty (:tgt (:args v1))))
+      )))
 

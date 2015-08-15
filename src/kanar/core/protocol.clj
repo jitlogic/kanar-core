@@ -3,12 +3,9 @@
     [clojure.data.xml :as xml]
     [kanar.core.util :as ku]))
 
-(defn emit-xml [el]
-  (.substring (xml/emit-str (xml/sexp-as-element el)) 38))
-
 (defn saml-validate-request [tid]
   (let [t1 (ku/xml-time (ku/cur-time))]
-    (emit-xml
+    (ku/emit-xml
       [:SOAP-ENV:Envelope {:xmlns:SOAP-ENV "http://schemas.xmlsoap.org/soap/envelope"}
        [:SOAP-ENV:Header]
        [:SOAP-ENV:Body
@@ -21,7 +18,7 @@
 
 (defn saml-validate-response [svt]
   (let [t1 (ku/xml-time (ku/cur-time)), t2 (ku/xml-time (+ 30000 (ku/cur-time)))]
-    (emit-xml
+    (ku/emit-xml
       [:SOAP-ENV:Envelope {:xmlns:SOAP-ENV "http://schemas.xmlsoap.org/soap/envelope/"}
        [:SOAP-ENV:Body
         [:saml1p:Response {:xmlns:saml1p  "urn:oasis:names:tc:SAML:1.0:protocol"
@@ -58,6 +55,7 @@
 
 
 ; TODO potential security concern: stack overflow if parsed XML is too deep
+; TODO zastąpić to przez xml-to-map
 (defn saml-lookup-tid [{:keys [tag content]}]
   (if (= :AssertionArtifact tag)
     (first content)
@@ -74,11 +72,11 @@
 
 
 (defn- cas20 [o]
-  (emit-xml [:cas:serviceResponse {:xmlns:cas "http://yale.edu/tp/cas"} o]))
+  (ku/emit-xml [:cas:serviceResponse {:xmlns:cas "http://yale.edu/tp/cas"} o]))
 
 
 (defn cas-logout-msg [svt]
-  (emit-xml
+  (ku/emit-xml
     [:samlp:LogoutRequest {:xmlns:samlp  "urn:oasis:names:tc:SAML:2.0:protocol"
                            :ID           (ku/random-string 32) :Version "2.0"
                            :IssueInstant (ku/xml-time (ku/cur-time))}
