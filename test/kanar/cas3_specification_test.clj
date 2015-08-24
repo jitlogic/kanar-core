@@ -65,8 +65,6 @@
   (routes
     (ANY "/login" req                                       ; TODO ANY -> POST/GET
          (kc/login-handler (:login-flow @app-state) @app-state req))
-    ;(ANY "/sulogin" req                                     ; TODO ograniczyć do POST/GET
-    ;     (kc/login-handler (kc/form-login-flow authenticate render-su-login-view) @app-state req))
     (ANY "/logout" req                                      ; TODO ograniczyć do GET
          (kc/logout-handler @app-state req))
     (ANY "/validate" req                                    ; TODO ograniczyć do POST
